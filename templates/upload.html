@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Documents — LightRAG-DuckDB{% endblock %}
+{% block content %}
+<h1 class="page-title">Documents</h1>
+<p class="page-sub">Upload text files or paste raw text. Each document is chunked, entities &amp; relationships are extracted with MiniMax-M3, embedded with embo-01, and merged into the knowledge graph incrementally.</p>
+
+<div class="card">
+  <div class="tabs">
+    <button class="tab active" id="tab-file" onclick="switchTab('file')">Upload file</button>
+    <button class="tab" id="tab-text" onclick="switchTab('text')">Paste text</button>
+  </div>
+
+  <div id="pane-file">
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+      <p><b>Drop a .txt / .md file here</b> or click to browse</p>
+      <p class="hint" id="file-name">UTF-8 text files</p>
+    </div>
+    <input type="file" id="file-input" accept=".txt,.md,.text,.markdown,text/plain" style="display:none;">
+  </div>
+
+  <div id="pane-text" style="display:none;">
+    <label>Title</label>
+    <input type="text" id="text-title" placeholder="my-notes.txt">
+    <label>Text content</label>
+    <textarea id="text-content" rows="8" placeholder="Paste your text here..."></textarea>
+  </div>
+
+  <div style="margin-top:16px;">
+    <button class="btn" id="index-btn" onclick="startIndex()">Index document</button>
+  </div>
+
+  <div id="job-panel" style="display:none; margin-top:16px;">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="status-line" id="job-status">Starting...</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Indexed documents</h3>
+  <table class="doc-table" id="doc-table">
+    <thead>
+      <tr><th>Filename</th><th>Size</th><th>Chunks</th><th>Added</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr data-id="{{ doc.id }}">
+        <td>{{ doc.filename }}</td>
+        <td>{{ doc.size }} chars</td>
+        <td>{{ doc.chunk_count }}</td>
+        <td>{{ doc.created_at[:19] }}</td>
+        <td><button class="btn danger" onclick="deleteDoc({{ doc.id }})">Delete</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="hint">No documents indexed yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedFile = null;
+
+function switchTab(tab) {
+  document.getElementById("tab-file").classList.toggle("active", tab === "file");
+  document.getElementById("tab-text").classList.toggle("active", tab === "text");
+  document.getElementById("pane-file").style.display = tab === "file" ? "" : "none";
+  document.getElementById("pane-text").style.display = tab === "text" ? "" : "none";
+}
+
+const dz = document.getElementById("dropzone");
+const fileInput = document.getElementById("file-input");
+fileInput.addEventListener("change", () => {
+  selectedFile = fileInput.files[0] || null;
+  document.getElementById("file-name").textContent = selectedFile ? selectedFile.name : "UTF-8 text files";
+});
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+dz.addEventListener("drop", e => {
+  e.preventDefault();
+  dz.classList.remove("drag");
+  if (e.dataTransfer.files.length) {
+    selectedFile = e.dataTransfer.files[0];
+    document.getElementById("file-name").textContent = selectedFile.name;
+  }
+});
+
+async function startIndex() {
+  const form = new FormData();
+  const isFileTab = document.getElementById("pane-file").style.display !== "none";
+  if (isFileTab) {
+    if (!selectedFile) { showToast("Choose a file first.", "err"); return; }
+    form.append("file", selectedFile);
+  } else {
+    const text = document.getElementById("text-content").value.trim();
+    if (!text) { showToast("Paste some text first.", "err"); return; }
+    form.append("text", text);
+    form.append("title", document.getElementById("text-title").value.trim());
+  }
+  const btn = document.getElementById("index-btn");
+  btn.disabled = true;
+  try {
+    const { job_id } = await api("/api/upload", { method: "POST", body: form });
+    document.getElementById("job-panel").style.display = "block";
+    pollJob(job_id);
+  } catch (err) {
+    showToast(err.message, "err");
+    btn.disabled = false;
+  }
+}
+
+async function pollJob(jobId) {
+  const statusEl = document.getElementById("job-status");
+  const fill = document.getElementById("progress-fill");
+  try {
+    const job = await api(`/api/jobs/${jobId}`);
+    statusEl.textContent = job.message;
+    statusEl.className = "status-line" + (job.status === "done" ? " done" : job.status === "error" ? " error" : "");
+    if (job.total_chunks > 0) {
+      const pct = job.status === "done" ? 100 : Math.min(95, (job.processed_chunks / job.total_chunks) * 100);
+      fill.style.width = pct + "%";
+    } else {
+      fill.style.width = "8%";
+    }
+    if (job.status === "done") {
+      showToast("Document indexed.");
+      setTimeout(() => location.reload(), 1200);
+      return;
+    }
+    if (job.status === "error") {
+      document.getElementById("index-btn").disabled = false;
+      return;
+    }
+    setTimeout(() => pollJob(jobId), 1500);
+  } catch (err) {
+    statusEl.textContent = err.message;
+    statusEl.className = "status-line error";
+    document.getElementById("index-btn").disabled = false;
+  }
+}
+
+async function deleteDoc(id) {
+  if (!confirm("Delete this document and its orphaned graph nodes?")) return;
+  try {
+    await api(`/api/documents/${id}`, { method: "DELETE" });
+    showToast("Document deleted.");
+    setTimeout(() => location.reload(), 600);
+  } catch (err) {
+    showToast(err.message, "err");
+  }
+}
+</script>
+{% endblock %}

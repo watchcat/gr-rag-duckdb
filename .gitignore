@@ -1,0 +1,17 @@
+# Local configuration: contains the MiniMax API key.
+config.json
+
+# DuckDB database files (the .wal is the write-ahead log)
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
+# Local tooling
+.claude/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+*.log

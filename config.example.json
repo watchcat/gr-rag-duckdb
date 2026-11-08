@@ -1,0 +1,13 @@
+{
+  "minimax_api_key": "",
+  "minimax_group_id": "",
+  "llm_model": "MiniMax-M3",
+  "embedding_model": "intfloat/multilingual-e5-small",
+  "api_base_url": "https://api.minimax.io/v1",
+  "chunk_size": 1200,
+  "chunk_overlap": 150,
+  "top_k_entities": 8,
+  "top_k_relationships": 8,
+  "top_k_chunks": 6,
+  "max_context_chars": 24000
+}

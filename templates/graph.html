@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Graph — LightRAG-DuckDB{% endblock %}
+{% block head %}
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+{% endblock %}
+{% block content %}
+<h1 class="page-title">Knowledge graph</h1>
+<p class="page-sub">Entities are nodes, relationships are edges. Entities appearing in multiple documents (cross-document connectors) are highlighted with an amber ring.</p>
+
+<div class="graph-toolbar">
+  <div class="legend" id="type-legend"></div>
+  <div class="legend" style="margin-left:auto;">
+    <span class="legend-item"><span class="legend-swatch" style="background:transparent;border:3px solid var(--amber);"></span> cross-document entity</span>
+  </div>
+  <button class="btn secondary" onclick="loadGraph()">Reload</button>
+</div>
+
+<div style="position:relative;">
+  <div id="graph-container"></div>
+  <div id="node-info">
+    <h4 id="ni-name"></h4>
+    <span class="type-tag" id="ni-type"></span>
+    <p id="ni-desc"></p>
+    <p id="ni-docs" style="font-family:var(--mono);font-size:11px;"></p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TYPE_COLORS = {
+  PERSON: "#5b8cff", ORGANIZATION: "#8b5cf6", LOCATION: "#34d399",
+  CONCEPT: "#f472b6", TECHNOLOGY: "#22d3ee", EVENT: "#fb923c",
+  PRODUCT: "#facc15", DEFAULT: "#94a3b8",
+};
+let network = null;
+
+function colorFor(type) {
+  return TYPE_COLORS[(type || "").toUpperCase()] || TYPE_COLORS.DEFAULT;
+}
+
+async function loadGraph() {
+  const data = await api("/api/graph");
+  const docNames = Object.fromEntries(data.documents.map(d => [d.id, d.filename]));
+
+  const usedTypes = new Set();
+  const nodes = data.nodes.map(n => {
+    const crossDoc = (n.doc_ids || []).length > 1;
+    usedTypes.add((n.type || "DEFAULT").toUpperCase());
+    return {
+      id: n.id,
+      label: n.name,
+      value: 1 + (n.mentions || 1),
+      color: {
+        background: colorFor(n.type),
+        border: crossDoc ? "#fbbf24" : "#2a3040",
+        highlight: { background: colorFor(n.type), border: "#ffffff" },
+      },
+      borderWidth: crossDoc ? 4 : 1,
+      font: { color: "#e6e9f0", size: 13, face: "Inter" },
+      _meta: n,
+    };
+  });
+  const edges = data.edges.map(e => ({
+    from: e.source, to: e.target,
+    width: Math.min(6, 1 + Math.log2((e.weight || 1))),
+    color: { color: "#3a4258", highlight: "#5b8cff" },
+    title: e.description || "",
+  }));
+
+  const legend = document.getElementById("type-legend");
+  legend.innerHTML = [...usedTypes].sort().map(t =>
+    `<span class="legend-item"><span class="legend-swatch" style="background:${colorFor(t)};"></span>${t.toLowerCase()}</span>`
+  ).join("");
+
+  const container = document.getElementById("graph-container");
+  network = new vis.Network(container, {
+    nodes: new vis.DataSet(nodes),
+    edges: new vis.DataSet(edges),
+  }, {
+    nodes: { shape: "dot", scaling: { min: 8, max: 30 } },
+    edges: { smooth: { type: "continuous" } },
+    physics: {
+      solver: "forceAtlas2Based",
+      forceAtlas2Based: { gravitationalConstant: -60, springLength: 120 },
+      stabilization: { iterations: 150 },
+    },
+    interaction: { hover: true, tooltipDelay: 120 },
+  });
+
+  const info = document.getElementById("node-info");
+  network.on("click", params => {
+    if (params.nodes.length) {
+      const node = nodes.find(n => n.id === params.nodes[0]);
+      if (node) {
+        const m = node._meta;
+        document.getElementById("ni-name").textContent = m.name;
+        document.getElementById("ni-type").textContent = m.type || "UNKNOWN";
+        document.getElementById("ni-desc").textContent = m.description || "";
+        const docs = (m.doc_ids || []).map(id => docNames[id] || `doc ${id}`);
+        document.getElementById("ni-docs").textContent =
+          docs.length ? `Appears in: ${docs.join(", ")}` : "";
+        info.style.display = "block";
+        return;
+      }
+    }
+    info.style.display = "none";
+  });
+
+  if (!nodes.length) {
+    container.innerHTML = '<p class="hint" style="padding:40px;text-align:center;">The graph is empty. <a href="/upload" style="color:var(--accent);">Index some documents</a> to build it.</p>';
+  }
+}
+loadGraph().catch(err => showToast(err.message, "err"));
+</script>
+{% endblock %}

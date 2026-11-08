@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Query — LightRAG-DuckDB{% endblock %}
+{% block content %}
+<h1 class="page-title">Ask your knowledge graph</h1>
+<p class="page-sub">Dual-level retrieval: vector search over entities &amp; relationships, then 1-hop and 2-hop graph traversal for cross-document connections.</p>
+
+<div class="card">
+  <div class="query-box">
+    <input type="text" id="question" placeholder="e.g. How are the projects in my documents connected?" autofocus>
+    <button class="btn" id="ask-btn" onclick="ask()">Ask</button>
+  </div>
+  {% if stats.entities == 0 %}
+  <p class="hint" style="margin-top:10px;">The knowledge graph is empty. <a href="/upload" style="color:var(--accent);">Upload documents</a> first.</p>
+  {% endif %}
+</div>
+
+<div id="result" style="display:none;">
+  <div class="card">
+    <h3>Answer</h3>
+    <div id="answer" class="answer-md"></div>
+  </div>
+  <div class="card">
+    <h3>Retrieval trace</h3>
+    <div class="legend" style="margin-bottom:8px;">
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--accent);"></span> direct vector match</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--green);"></span> 1-hop neighbor</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--amber);"></span> 2-hop neighbor</span>
+    </div>
+    <div class="section-label">Entities used</div>
+    <div id="entities-used"></div>
+    <div class="section-label">Relationships used</div>
+    <div id="rels-used"></div>
+    <div class="section-label">Source chunks</div>
+    <div id="chunks-used"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function ask() {
+  const q = document.getElementById("question").value.trim();
+  if (!q) return;
+  const btn = document.getElementById("ask-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Thinking';
+  try {
+    const data = await api("/api/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q }),
+    });
+    document.getElementById("result").style.display = "block";
+    document.getElementById("answer").innerHTML = renderMarkdown(data.answer);
+
+    const seed = new Set(data.seed_ids), hop1 = new Set(data.hop1_ids);
+    document.getElementById("entities-used").innerHTML = data.entities.map(e => {
+      const cls = seed.has(e.id) ? "seed" : hop1.has(e.id) ? "hop1" : "hop2";
+      return `<span class="badge" title="${escapeHtml(e.description || "")}"><span class="dot ${cls}"></span>E${e.id} ${escapeHtml(e.name)}</span>`;
+    }).join("") || '<span class="hint">none</span>';
+
+    document.getElementById("rels-used").innerHTML = data.relationships.map(r =>
+      `<span class="badge" title="${escapeHtml(r.description || "")}">R${r.id} ${escapeHtml(r.source_name)} → ${escapeHtml(r.target_name)}</span>`
+    ).join("") || '<span class="hint">none</span>';
+
+    document.getElementById("chunks-used").innerHTML = data.chunks.map(c =>
+      `<div class="chunk-item"><b>Chunk ${c.id} · ${escapeHtml(c.filename)}</b><br>${escapeHtml(c.preview)}</div>`
+    ).join("") || '<span class="hint">none</span>';
+  } catch (err) {
+    showToast(err.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Ask";
+  }
+}
+document.getElementById("question").addEventListener("keydown", e => {
+  if (e.key === "Enter") ask();
+});
+</script>
+{% endblock %}

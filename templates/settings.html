@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Settings — LightRAG-DuckDB{% endblock %}
+{% block content %}
+<h1 class="page-title">Settings</h1>
+<p class="page-sub">Configuration is persisted to <code>config.json</code> next to the application.</p>
+
+<div class="card">
+  <h3>MiniMax API key</h3>
+  {% if masked_key %}
+  <p class="hint">Current key: <code>{{ masked_key }}</code></p>
+  {% else %}
+  <p class="hint" style="color:var(--amber);">No API key configured yet. Get one at <a href="https://platform.minimax.io" target="_blank" style="color:var(--accent);">platform.minimax.io</a>.</p>
+  {% endif %}
+  <label>API key</label>
+  <input type="password" id="api-key" placeholder="Enter a new MiniMax API key (leave blank to keep current)">
+  <label>Group ID</label>
+  <input type="text" id="group-id" value="{{ config.minimax_group_id }}" placeholder="Your MiniMax GroupId (optional)">
+  <p class="hint">The MiniMax key is used for MiniMax-M3 (entity extraction &amp; answers) via <code>{{ config.api_base_url }}</code>. Embeddings run locally with sentence-transformers (<code>{{ config.embedding_model }}</code>) — no API needed.</p>
+</div>
+
+<div class="card">
+  <h3>Indexing &amp; retrieval parameters</h3>
+  <div class="settings-grid">
+    <div>
+      <label>Chunk size (characters)</label>
+      <input type="number" id="chunk_size" value="{{ config.chunk_size }}" min="200" max="8000">
+    </div>
+    <div>
+      <label>Chunk overlap (characters)</label>
+      <input type="number" id="chunk_overlap" value="{{ config.chunk_overlap }}" min="0" max="1000">
+    </div>
+    <div>
+      <label>Top-K entities (vector search)</label>
+      <input type="number" id="top_k_entities" value="{{ config.top_k_entities }}" min="1" max="50">
+    </div>
+    <div>
+      <label>Top-K relationships (vector search)</label>
+      <input type="number" id="top_k_relationships" value="{{ config.top_k_relationships }}" min="1" max="50">
+    </div>
+    <div>
+      <label>Top-K source chunks</label>
+      <input type="number" id="top_k_chunks" value="{{ config.top_k_chunks }}" min="1" max="30">
+    </div>
+  </div>
+</div>
+
+<button class="btn" id="save-btn" onclick="saveSettings()">Save settings</button>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveSettings() {
+  const body = {
+    chunk_size: parseInt(document.getElementById("chunk_size").value),
+    chunk_overlap: parseInt(document.getElementById("chunk_overlap").value),
+    top_k_entities: parseInt(document.getElementById("top_k_entities").value),
+    top_k_relationships: parseInt(document.getElementById("top_k_relationships").value),
+    top_k_chunks: parseInt(document.getElementById("top_k_chunks").value),
+  };
+  const key = document.getElementById("api-key").value.trim();
+  if (key) body.minimax_api_key = key;
+  body.minimax_group_id = document.getElementById("group-id").value.trim();
+  const btn = document.getElementById("save-btn");
+  btn.disabled = true;
+  try {
+    await api("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    showToast("Settings saved.");
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    showToast(err.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+{% endblock %}

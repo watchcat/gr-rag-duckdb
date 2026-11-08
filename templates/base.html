@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}LightRAG-DuckDB{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">◈</div>
+        <div>
+          <div class="brand-name">LightRAG</div>
+          <div class="brand-sub">DuckDB Edition</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="/" class="nav-link {% if page == 'query' %}active{% endif %}">
+          <span class="nav-icon">?</span> Query
+        </a>
+        <a href="/upload" class="nav-link {% if page == 'upload' %}active{% endif %}">
+          <span class="nav-icon">↑</span> Documents
+        </a>
+        <a href="/graph" class="nav-link {% if page == 'graph' %}active{% endif %}">
+          <span class="nav-icon">◉</span> Knowledge Graph
+        </a>
+        <a href="/settings" class="nav-link {% if page == 'settings' %}active{% endif %}">
+          <span class="nav-icon">⚙</span> Settings
+        </a>
+      </nav>
+      <div class="sidebar-stats">
+        <div class="stat-row"><span>Documents</span><b>{{ stats.documents }}</b></div>
+        <div class="stat-row"><span>Chunks</span><b>{{ stats.chunks }}</b></div>
+        <div class="stat-row"><span>Entities</span><b>{{ stats.entities }}</b></div>
+        <div class="stat-row"><span>Relations</span><b>{{ stats.relationships }}</b></div>
+      </div>
+      {% if not has_api_key %}
+      <a href="/settings" class="key-warning">⚠ API key not set</a>
+      {% endif %}
+    </aside>
+    <main class="main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
